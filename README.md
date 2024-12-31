@@ -1,2 +1,2 @@
 # LabPrut
-This reposityory belongs to the Research Project of Maayan Shani
+This repository belongs to the Research Project of Maayan Shani
