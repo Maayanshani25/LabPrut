@@ -52,5 +52,5 @@ class FileNames(Enum):
     HFS_DAY2TRY9 =       "data/h5/day2section2/dataHFSDay2Try9.h5"
     HFS_DAY2TRY10 =      "data/h5/day2section2/dataHFSDay2Try10.h5"
     
-    RECORDING_FRAMES = "RecordingFrames.csv"
+    RECORDING_FRAMES =   "RecordingFrames.csv"
     
