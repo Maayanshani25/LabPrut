@@ -20,6 +20,9 @@ matplotlib.use('TkAgg')  # Or "Qt5Agg", "MacOSX", etc., depending on your enviro
 from readData import *  # Data loading and preprocessing
 from createPlots import *  # Visualization functions
 from constants import Nodes, FileNames  # Enumerations
+from pca import *  # PCA function
+
+PCA_DIMENSIONS = 2
 
 
 def process_all_files():
@@ -55,7 +58,31 @@ def main():
     # Visualizations
     # ==========================
     nodeNames = [Nodes.WRIST, Nodes.MCP1, Nodes.MCP2, Nodes.MCP3, Nodes.MCP4, Nodes.MCP5, Nodes.TIPS1, Nodes.TIPS2, Nodes.TIPS3, Nodes.TIPS4, Nodes.TIPS5]
-    plot_density_heatmaps_all(locations_control, nodeNames)
+    # plot_density_heatmaps_all(locations_control, nodeNames)
+    
+    
+    # ==========================
+    # PCA 
+    # ==========================
+    # explain variance
+    labels = ["Control", "HFS"]
+    data = [locations_control[:, :, :, :].reshape(locations_control.shape[0], -1), locations_hfs[:, :, :, :].reshape(locations_hfs.shape[0], -1)]
+    # plot_explained_variance_some(data, labels)
+    dataBeginning = [locations_control[:100, :, :, :].reshape(100, -1), locations_hfs[:100, :, :, :].reshape(100, -1)]
+    labelsBeginning = ["Control Beginning", "HFS Beginning"]
+    plot_explained_variance_some(dataBeginning, labelsBeginning)
+    
+    
+    # Control Data
+    # plot_explained_variance(locations_control[:, :, :, :].reshape(locations_control.shape[0], -1), "Control")
+    plot_pca(locations_control[:, :, :, :].reshape(locations_control.shape[0], -1), "Control", dimensions=PCA_DIMENSIONS)
+    plot_pca(dataBeginning[0], labelsBeginning[0], dimensions=PCA_DIMENSIONS)
+    
+    # HFS Data
+    # plot_explained_variance(locations_hfs[:, :, :, :].reshape(locations_hfs.shape[0], -1), "HFS")
+    plot_pca(locations_hfs[:, :, :, :].reshape(locations_hfs.shape[0], -1), "HFS", dimensions=PCA_DIMENSIONS)
+    
+
 
     # # Joint-specific Interactive Visualization
     # print("\n=== Joint Graphs ===")
