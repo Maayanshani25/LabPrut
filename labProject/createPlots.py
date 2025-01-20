@@ -18,7 +18,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.widgets import Slider
 import seaborn as sns
 from scipy.spatial.distance import pdist, squareform
-from constants import Nodes
+from utils.constants import Nodes
 
 
 def plot_trajectory(McpOrTipsLoc: np.ndarray, title: str):

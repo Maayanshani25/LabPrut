@@ -19,10 +19,10 @@ matplotlib.use('TkAgg')  # Or "Qt5Agg", "MacOSX", etc., depending on your enviro
 
 from readData import *  # Data loading and preprocessing
 from createPlots import *  # Visualization functions
-from constants import Nodes, FileNames  # Enumerations
+from utils.constants import Nodes, FileNames  # Enumerations
 from pca import *  # PCA function
 
-PCA_DIMENSIONS = 2
+PCA_DIMENSIONS = 3
 
 
 def process_all_files():
@@ -69,6 +69,10 @@ def main():
     data = [locations_control[:, :, :, :].reshape(locations_control.shape[0], -1), locations_hfs[:, :, :, :].reshape(locations_hfs.shape[0], -1)]
     # plot_explained_variance_some(data, labels)
     dataBeginning = [locations_control[:100, :, :, :].reshape(100, -1), locations_hfs[:100, :, :, :].reshape(100, -1)]
+    # print the shape of both datasets
+    print(dataBeginning[0].shape)
+    print(dataBeginning[0])
+    print(dataBeginning[1].shape)
     labelsBeginning = ["Control Beginning", "HFS Beginning"]
     plot_explained_variance_some(dataBeginning, labelsBeginning)
     
