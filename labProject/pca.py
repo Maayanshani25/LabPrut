@@ -209,3 +209,4 @@ def plot_pca(data: np.ndarray,kindOfData: str, dimensions: int = 2):
 #     # Call the function for 2D and 3D PCA
 #     plot_pca(example_data, dimensions=2)
 #     plot_pca(example_data, dimensions=3)
+
