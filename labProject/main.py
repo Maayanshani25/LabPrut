@@ -25,9 +25,6 @@ from pca import *  # PCA function
 PCA_DIMENSIONS = 3
 BEGINNING_FRAMES = 9000
 
-def process_all_files():
-    filenames = [file.value for file in FileNames]
-    
 
 def main():
     # 1. File Path    
@@ -87,7 +84,6 @@ def main():
     # plot_explained_variance(locations_hfs[:, :, :, :].reshape(locations_hfs.shape[0], -1), "HFS")
     plot_pca(locations_hfs[:, :, :, :].reshape(locations_hfs.shape[0], -1), "HFS", dimensions=PCA_DIMENSIONS)
     
-
 
     # # Joint-specific Interactive Visualization
     # print("\n=== Joint Graphs ===")
