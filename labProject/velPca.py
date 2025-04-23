@@ -19,11 +19,16 @@ from readData import *
 import numpy as np
 from utils.constants import Nodes, FileNames
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
 
 # Change this to the files you want to analyze
 CONTROL_FILE = FileNames.CONTROL_DAY1TRY1.value
 HFS_FILE = FileNames.HFS_DAY1TRY1.value
-WINDOW_SIZE = 200
+CONTROL_FILES = [f.value for f in FileNames if f.name.startswith("CONTROL")]
+HFS_FILES = [f.value for f in FileNames if f.name.startswith("HFS")]
+WINDOW_SIZE = 1000
+NUM_JOINTS = 11
 
 def smooth_data(data: np.ndarray, window_size: int = WINDOW_SIZE) -> np.ndarray:
     """
@@ -52,7 +57,6 @@ def smooth_data(data: np.ndarray, window_size: int = WINDOW_SIZE) -> np.ndarray:
 
     return smoothed
 
-import numpy as np
 
 def convert_velocity_to_speed(velocity_data: np.ndarray) -> np.ndarray:
     """
@@ -73,8 +77,8 @@ def convert_velocity_to_speed(velocity_data: np.ndarray) -> np.ndarray:
     return speed
 
 
-# The main of the file 
-def pcaVel():
+# function to analyze data and run PCA
+def pcaPipeline():
     logging.info("Loading CONTROL data...")
     dset_names_control, locations_control, node_names_control = load_hdf5_data(CONTROL_FILE)
     locations_control = fill_missing(locations_control)
@@ -96,8 +100,8 @@ def pcaVel():
 
     logging.info("Smoothing data...")
     smooth_location_data_control = smooth_data(location_data[0])
-    smooth__location_data_hfs = smooth_data(location_data[1])
-    smooth_location_data = [smooth_location_data_control, smooth__location_data_hfs]
+    smooth_location_data_hfs = smooth_data(location_data[1])
+    smooth_location_data = [smooth_location_data_control, smooth_location_data_hfs]
     logging.info("Smoothing complete.")
         
     # plot_before_after(location_data[0], smooth_location_data[0])
@@ -105,14 +109,22 @@ def pcaVel():
     # convert x, y to velocity
     logging.info("Calculating velocity...")
     velocity_data_control = np.gradient(smooth_location_data[0], axis=0) # todo: how do i know what is the time step?
+    velocity_data_hfs = np.gradient(smooth_location_data[1], axis=0)
+    velocity_data = [velocity_data_control, velocity_data_hfs]
     
     # plot_all_velocities(velocity_data_control)
     
     logging.info("Velocity calculation complete.")
     speed_data_control = convert_velocity_to_speed(velocity_data_control)
-    logging.debug("Speed data shape: %s", speed_data_control.shape)
+    speed_data_hfs = convert_velocity_to_speed(velocity_data_hfs)
     
-    plot_speed(speed_data_control)
+    # plot_speed(speed_data_control, "Control")
+    # plot_speed(speed_data_hfs, "HFS")
+    
+    pca_control = run_pca_and_plot_variance(speed_data_control, "Control")
+    pca_hfs = run_pca_and_plot_variance(speed_data_hfs, "HFS")
+
+####### Plotting functions #######
     
 def plot_before_after(original, smoothed, joint_index=5, coord='x'):
     """
@@ -138,7 +150,6 @@ def plot_before_after(original, smoothed, joint_index=5, coord='x'):
     plt.tight_layout()
     plt.show()
     
-    import matplotlib.pyplot as plt
 
 def plot_all_velocities(velocity_data: np.ndarray):
     """
@@ -164,11 +175,7 @@ def plot_all_velocities(velocity_data: np.ndarray):
     plt.tight_layout()
     plt.show()
 
-    
-import matplotlib.pyplot as plt
-import numpy as np
-
-def plot_speed(speed_data: np.ndarray):
+def plot_speed(speed_data: np.ndarray, kind: str):
     """
     Plots speed over time for all 11 joints.
 
@@ -176,19 +183,67 @@ def plot_speed(speed_data: np.ndarray):
         speed_data (np.ndarray): Speed array of shape (frames, 11),
                                  where each column is the speed of one joint.
     """
-    assert speed_data.ndim == 2 and speed_data.shape[1] == 11, "Expected speed shape (frames, 11)"
+    assert speed_data.ndim == 2 and speed_data.shape[1] == NUM_JOINTS, "Expected speed shape (frames, 11)"
 
     plt.figure(figsize=(14, 6))
-    for joint_index in range(2):
+    for joint_index in range(NUM_JOINTS):
         plt.plot(speed_data[:, joint_index], label=f"Joint {joint_index}", alpha=0.8)
 
     plt.xlabel("Frame")
     plt.ylabel("Speed (√(Vx² + Vy²))")
-    plt.title("Speed of All Joints Over Time")
+    plt.title("Speed of All Joints Over Time - " + kind)
     plt.legend(loc='upper right', ncol=2, fontsize='small')
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+    
+def run_pca_and_plot_variance(data: np.ndarray, title="Control", show_plot: bool=False):
+    """
+    Runs PCA on the data and plots the explained variance of each component.
+
+    Parameters:
+        data (np.ndarray): Input data of shape (frames, features), e.g., (frames, 11).
+        title (str): Title for the plot.
+    """
+    assert data.ndim == 2, "Data must be 2D"
+    
+    pca = PCA(n_components=data.shape[1])  # up to 11 components
+    pca.fit(data)
+
+    explained_variance_ratio = pca.explained_variance_ratio_
+
+    # Plotting
+    if show_plot:
+        plt.figure(figsize=(10, 5))
+        bars = plt.bar(range(1, len(explained_variance_ratio)+1), explained_variance_ratio, alpha=0.7)
+        plt.plot(
+            range(1, len(explained_variance_ratio)+1),
+            np.cumsum(explained_variance_ratio),
+            marker='o', linestyle='--', color='black',
+            label='Cumulative Variance'
+        )
+
+        # Add value labels on bars
+        for i, bar in enumerate(bars):
+            yval = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2, yval + 0.01, f"{yval:.2f}", ha='center', va='bottom', fontsize=9)
+
+        plt.xlabel('Principal Component')
+        plt.ylabel('Explained Variance Ratio')
+        plt.title("Explained Variance by PCA: " + title)
+        plt.xticks(range(1, len(explained_variance_ratio)+1))
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    return pca
+
+def main():
+    # run the pipeling on all the files.
+    # modify the pipeline to return a value
+    # Go through the tasks in one note
+    pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run PCA on motion data.")
@@ -207,6 +262,4 @@ if __name__ == "__main__":
         format="%(asctime)s | %(levelname)s: %(message)s",
         datefmt="%H:%M:%S"
     )
-
-
-    pcaVel()
+    pcaPipeline()
