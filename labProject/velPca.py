@@ -20,6 +20,8 @@ import numpy as np
 from utils.constants import Nodes, FileNames
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+import os
+import re
 
 
 # Change this to the files you want to analyze
@@ -47,7 +49,7 @@ def smooth_data(data: np.ndarray, window_size: int = WINDOW_SIZE) -> np.ndarray:
     assert data.ndim == 2, "Data must be 2D (frames x features)"
     assert window_size >= 1, "Window size must be >= 1"
 
-    logging.info("Smoothing data with window size = %d", window_size)
+    logging.debug("Smoothing data with window size = %d", window_size)
     logging.debug("Original data shape: %s", data.shape)
 
     smoothed = np.empty(data.shape, dtype=np.float64)
@@ -152,7 +154,7 @@ def plot_speed(speed_data: np.ndarray, kind: str):
     plt.tight_layout()
     plt.show()
     
-def run_pca_and_plot_variance(data: np.ndarray, title="Control", show_plot: bool=False):
+def run_pca_and_plot_variance(data: np.ndarray, title: str, show_plot: bool=False) -> PCA:
     """
     Runs PCA on the data and plots the explained variance of each component.
 
@@ -166,6 +168,7 @@ def run_pca_and_plot_variance(data: np.ndarray, title="Control", show_plot: bool
     pca.fit(data)
 
     explained_variance_ratio = pca.explained_variance_ratio_
+    logging.info(title + ": First PCA component explains: %.1f%% of variance", explained_variance_ratio[0] * 100)
 
     # Plotting
     if show_plot:
@@ -196,18 +199,18 @@ def run_pca_and_plot_variance(data: np.ndarray, title="Control", show_plot: bool
 
 # function to analyze data and run PCA
 # todo: add hint for output_pca
-def pcaPipeline(control_path: str, hfs_path: str, output_pca, show_plots: bool = False):
+def pcaPipeline(control_path: str, hfs_path: str, output_pca: list[list[PCA]], show_plots_bool: bool = False):
     logging.info("Loading CONTROL data...")
     dset_names_control, locations_control, node_names_control = load_hdf5_data(control_path)
     locations_control = fill_missing(locations_control)
     logging.debug("location control shape: %s", locations_control.shape)
 
-    logging.info("Loading HFS data...")
+    logging.debug("Loading HFS data...")
     dset_names_hfs, locations_hfs, node_names_hfs = load_hdf5_data(hfs_path)
     locations_hfs = fill_missing(locations_hfs)
     logging.debug("location hfs shape: %s", locations_hfs.shape)
 
-    logging.info("Reshaping data for PCA...")
+    logging.debug("Reshaping data for PCA...")
     # [x1, y1, x2, y2, ..., x11, y11]
     location_data = [
         locations_control.reshape(locations_control.shape[0], -1),
@@ -216,50 +219,106 @@ def pcaPipeline(control_path: str, hfs_path: str, output_pca, show_plots: bool =
     logging.debug("new control location data shape: %s", location_data[CONTROL_INDEX].shape)
     logging.debug("new hfs location data shape: %s", location_data[HFS_INDEX].shape)
 
-    logging.info("Smoothing data...")
+    logging.debug("Smoothing data...")
     smooth_location_data = [None, None]
     smooth_location_data[CONTROL_INDEX] = smooth_data(location_data[CONTROL_INDEX])
     smooth_location_data[HFS_INDEX] = smooth_data(location_data[HFS_INDEX])
-    logging.info("Smoothing complete.")
+    logging.debug("Smoothing complete.")
     
-    if show_plots:
+    if show_plots_bool:
         plot_before_after(location_data[0], smooth_location_data[0])
     
     # convert x, y to velocity
-    logging.info("Calculating velocity...")
+    logging.debug("Calculating velocity...")
     velocity_data = [None, None]
     velocity_data[CONTROL_INDEX] = np.gradient(smooth_location_data[0], axis=0) # todo: how do i know what is the time step?
     velocity_data[HFS_INDEX] = np.gradient(smooth_location_data[1], axis=0)
-    logging.info("Velocity calculation complete.")
+    logging.debug("Velocity calculation complete.")
     
-    if show_plots:
+    if show_plots_bool:
         plot_all_velocities(velocity_data[CONTROL_INDEX])
     
-    logging.info("Converting velocity to speed...")
+    logging.debug("Converting velocity to speed...")
     speed_data_control = convert_velocity_to_speed(velocity_data[CONTROL_INDEX])
     speed_data_hfs = convert_velocity_to_speed(velocity_data[HFS_INDEX])
     
-    if show_plots:
+    if show_plots_bool:
         plot_speed(speed_data_control, "Control")
         plot_speed(speed_data_hfs, "HFS")
     
     logging.info("Running PCA...")
-    pca_control = run_pca_and_plot_variance(speed_data_control, "Control", SHOW_PLOT)
-    pca_hfs = run_pca_and_plot_variance(speed_data_hfs, "HFS", SHOW_PLOT)
+    pca_control = run_pca_and_plot_variance(speed_data_control, "Control", show_plots_bool)
+    pca_hfs = run_pca_and_plot_variance(speed_data_hfs, "HFS", show_plots_bool)
+    
+    output_pca[CONTROL_INDEX].append(pca_control)
+    output_pca[HFS_INDEX].append(pca_hfs)
 
+def format_path_nicely(path: str) -> str:
+    """
+    Given a full file path like 'data/h5/.../dataControlDay2Try10.h5',
+    returns a formatted string like 'Control: Day 2 Try 10'.
+    """
+    filename = os.path.splitext(os.path.basename(path))[0]  # 'dataControlDay2Try10'
+
+    # Match: data + (Control or HFS) + Day + number + Try + number
+    match = re.match(r"data(Control|HFS)Day(\d+)Try(\d+)", filename)
+    if not match:
+        return filename  # fallback
+
+    group, day, trial = match.groups()
+    return f"{group}: Day {day} Try {trial}"
+
+def plot_first_pca_distribution(control_vals, hfs_vals):
+    """
+    Creates a horizontal 1D scatter plot of the first PCA component variance.
+    Control = blue X, HFS = green O.
+    """
+    plt.figure(figsize=(10, 2.5))
+
+    # Constant y-position so they all appear in a line
+    y_control = [1] * len(control_vals)
+    y_hfs = [2] * len(hfs_vals)
+
+    # Plot control as blue X
+    plt.scatter(control_vals, y_control, color='blue', marker='x', label='Control', s=60)
+
+    # Plot HFS as green O
+    plt.scatter(hfs_vals, y_hfs, color='green', marker='x', label='HFS', s=60)
+    
+    avg_control = np.mean(control_vals)
+    avg_hfs = np.mean(hfs_vals)
+    plt.scatter(avg_control, 1, color='blue', marker='o', s=100, label='Avg Control')
+    plt.scatter(avg_hfs, 2, color='green', marker='o', s=100, label='Avg HFS')
+
+    # Formatting
+    plt.yticks([1, 2], ['Control', 'HFS'])
+    plt.xlabel('Explained Variance of 1st PCA (%)')
+    plt.title('Explained Variance Distribution of First PCA Component')
+    plt.grid(axis='x', linestyle='--', alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 def main():
+    control_variances = [
+    90.6, 80.6, 91.4, 83.3, 90.9, 90.7, 89.1, 90.1, 87.3, 85.7, 87.3, 81.8, 83.7
+    ]
+    hfs_variances = [
+        88.5, 90.7, 92.6, 91.3, 83.7, 87.2, 91.5, 91.0, 92.0, 91.4, 93.3, 90.3, 93.7
+    ]
+    plot_first_pca_distribution(control_variances, hfs_variances)
+    
     # run the pipeling on all the files.
     # modify the pipeline to return a value
     # Go through the tasks in one note
-    output_pca = [None, None]
+    output_pca = [[], []]
     print(CONTROL_FILES)
     print(HFS_FILES)
     for control_path, hfs_path in zip(CONTROL_FILES, HFS_FILES):
-        logging.info(f"Running PCA for:\n  CONTROL: {control_path}\n  HFS: {hfs_path}")
-        # todo: remove the comment
-        # pcaPipeline(control_path, hfs_path)
-        pcaPipeline(CONTROL_FILE, HFS_FILE, output_pca)
+        control_name = format_path_nicely(control_path)
+        hfs_name = format_path_nicely(hfs_path)
+        logging.info(f"Running PCA for:\n  {control_name}\n {hfs_name}")
+        pcaPipeline(control_path, hfs_path, output_pca, SHOW_PLOT)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run PCA on motion data.")
