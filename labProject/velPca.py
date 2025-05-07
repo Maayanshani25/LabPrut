@@ -23,12 +23,15 @@ from sklearn.decomposition import PCA
 
 
 # Change this to the files you want to analyze
-CONTROL_FILE = FileNames.CONTROL_DAY1TRY1.value
-HFS_FILE = FileNames.HFS_DAY1TRY1.value
+CONTROL_FILE = FileNames.CONTROL_DAY2TRY6.value
+HFS_FILE = FileNames.HFS_DAY2TRY6.value
 CONTROL_FILES = [f.value for f in FileNames if f.name.startswith("CONTROL")]
 HFS_FILES = [f.value for f in FileNames if f.name.startswith("HFS")]
-WINDOW_SIZE = 1000
+WINDOW_SIZE = 200
 NUM_JOINTS = 11
+SHOW_PLOT = True
+CONTROL_INDEX = 0
+HFS_INDEX = 1
 
 def smooth_data(data: np.ndarray, window_size: int = WINDOW_SIZE) -> np.ndarray:
     """
@@ -75,54 +78,6 @@ def convert_velocity_to_speed(velocity_data: np.ndarray) -> np.ndarray:
 
     speed = np.sqrt(vx**2 + vy**2)  # shape: (frames, 11)
     return speed
-
-
-# function to analyze data and run PCA
-def pcaPipeline():
-    logging.info("Loading CONTROL data...")
-    dset_names_control, locations_control, node_names_control = load_hdf5_data(CONTROL_FILE)
-    locations_control = fill_missing(locations_control)
-    logging.debug("location control shape: %s", locations_control.shape)
-
-    logging.info("Loading HFS data...")
-    dset_names_hfs, locations_hfs, node_names_hfs = load_hdf5_data(HFS_FILE)
-    locations_hfs = fill_missing(locations_hfs)
-    logging.debug("location hfs shape: %s", locations_hfs.shape)
-
-    logging.info("Reshaping data for PCA...")
-    # [x1, y1, x2, y2, ..., x11, y11]
-    location_data = [
-        locations_control.reshape(locations_control.shape[0], -1),
-        locations_hfs.reshape(locations_hfs.shape[0], -1)
-    ]
-    logging.debug("new control location data shape: %s", location_data[0].shape)
-    logging.debug("new hfs location data shape: %s", location_data[1].shape)
-
-    logging.info("Smoothing data...")
-    smooth_location_data_control = smooth_data(location_data[0])
-    smooth_location_data_hfs = smooth_data(location_data[1])
-    smooth_location_data = [smooth_location_data_control, smooth_location_data_hfs]
-    logging.info("Smoothing complete.")
-        
-    # plot_before_after(location_data[0], smooth_location_data[0])
-    
-    # convert x, y to velocity
-    logging.info("Calculating velocity...")
-    velocity_data_control = np.gradient(smooth_location_data[0], axis=0) # todo: how do i know what is the time step?
-    velocity_data_hfs = np.gradient(smooth_location_data[1], axis=0)
-    velocity_data = [velocity_data_control, velocity_data_hfs]
-    
-    # plot_all_velocities(velocity_data_control)
-    
-    logging.info("Velocity calculation complete.")
-    speed_data_control = convert_velocity_to_speed(velocity_data_control)
-    speed_data_hfs = convert_velocity_to_speed(velocity_data_hfs)
-    
-    # plot_speed(speed_data_control, "Control")
-    # plot_speed(speed_data_hfs, "HFS")
-    
-    pca_control = run_pca_and_plot_variance(speed_data_control, "Control")
-    pca_hfs = run_pca_and_plot_variance(speed_data_hfs, "HFS")
 
 ####### Plotting functions #######
     
@@ -239,11 +194,72 @@ def run_pca_and_plot_variance(data: np.ndarray, title="Control", show_plot: bool
 
     return pca
 
+# function to analyze data and run PCA
+# todo: add hint for output_pca
+def pcaPipeline(control_path: str, hfs_path: str, output_pca, show_plots: bool = False):
+    logging.info("Loading CONTROL data...")
+    dset_names_control, locations_control, node_names_control = load_hdf5_data(control_path)
+    locations_control = fill_missing(locations_control)
+    logging.debug("location control shape: %s", locations_control.shape)
+
+    logging.info("Loading HFS data...")
+    dset_names_hfs, locations_hfs, node_names_hfs = load_hdf5_data(hfs_path)
+    locations_hfs = fill_missing(locations_hfs)
+    logging.debug("location hfs shape: %s", locations_hfs.shape)
+
+    logging.info("Reshaping data for PCA...")
+    # [x1, y1, x2, y2, ..., x11, y11]
+    location_data = [
+        locations_control.reshape(locations_control.shape[0], -1),
+        locations_hfs.reshape(locations_hfs.shape[0], -1)
+    ]
+    logging.debug("new control location data shape: %s", location_data[CONTROL_INDEX].shape)
+    logging.debug("new hfs location data shape: %s", location_data[HFS_INDEX].shape)
+
+    logging.info("Smoothing data...")
+    smooth_location_data = [None, None]
+    smooth_location_data[CONTROL_INDEX] = smooth_data(location_data[CONTROL_INDEX])
+    smooth_location_data[HFS_INDEX] = smooth_data(location_data[HFS_INDEX])
+    logging.info("Smoothing complete.")
+    
+    if show_plots:
+        plot_before_after(location_data[0], smooth_location_data[0])
+    
+    # convert x, y to velocity
+    logging.info("Calculating velocity...")
+    velocity_data = [None, None]
+    velocity_data[CONTROL_INDEX] = np.gradient(smooth_location_data[0], axis=0) # todo: how do i know what is the time step?
+    velocity_data[HFS_INDEX] = np.gradient(smooth_location_data[1], axis=0)
+    logging.info("Velocity calculation complete.")
+    
+    if show_plots:
+        plot_all_velocities(velocity_data[CONTROL_INDEX])
+    
+    logging.info("Converting velocity to speed...")
+    speed_data_control = convert_velocity_to_speed(velocity_data[CONTROL_INDEX])
+    speed_data_hfs = convert_velocity_to_speed(velocity_data[HFS_INDEX])
+    
+    if show_plots:
+        plot_speed(speed_data_control, "Control")
+        plot_speed(speed_data_hfs, "HFS")
+    
+    logging.info("Running PCA...")
+    pca_control = run_pca_and_plot_variance(speed_data_control, "Control", SHOW_PLOT)
+    pca_hfs = run_pca_and_plot_variance(speed_data_hfs, "HFS", SHOW_PLOT)
+
+
 def main():
     # run the pipeling on all the files.
     # modify the pipeline to return a value
     # Go through the tasks in one note
-    pass
+    output_pca = [None, None]
+    print(CONTROL_FILES)
+    print(HFS_FILES)
+    for control_path, hfs_path in zip(CONTROL_FILES, HFS_FILES):
+        logging.info(f"Running PCA for:\n  CONTROL: {control_path}\n  HFS: {hfs_path}")
+        # todo: remove the comment
+        # pcaPipeline(control_path, hfs_path)
+        pcaPipeline(CONTROL_FILE, HFS_FILE, output_pca)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run PCA on motion data.")
@@ -262,4 +278,5 @@ if __name__ == "__main__":
         format="%(asctime)s | %(levelname)s: %(message)s",
         datefmt="%H:%M:%S"
     )
-    pcaPipeline()
+    
+    main()
